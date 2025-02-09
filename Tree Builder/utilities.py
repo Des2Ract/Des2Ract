@@ -1,5 +1,5 @@
 import json
-from classes import Node
+from classes import UiNode
 
 from os import system
 from queue import Queue
@@ -25,36 +25,48 @@ class Utils:
     def filter_leaf_elements(page_data: dict):
         leaf_nodes = []
         queue : Queue = Queue()
-        queue.put(page_data["document"])
-        
+        queue.put(page_data["document"]["children"][0]["children"][0])
+        x_offset = int(page_data["document"]["children"][0]["children"][0]["absoluteBoundingBox"]["x"])
+        y_offset = int(page_data["document"]["children"][0]["children"][0]["absoluteBoundingBox"]["y"])
+        #TODO: Here We Will Have Multiple Pages, So We Need To Find A Way to handle that later
         while not queue.empty():
             top : dict = queue.get()
             if "children" in top.keys():
                 for child in top["children"]:
                     queue.put(child)
-            else:
+            elif top["type"] != "LINE":
+                top["absoluteBoundingBox"]["x"] = int(top["absoluteBoundingBox"]["x"]) - x_offset
+                top["absoluteBoundingBox"]["y"] = int(top["absoluteBoundingBox"]["y"]) - y_offset
                 leaf_nodes.append(top)
         
         return leaf_nodes
 
     @staticmethod
-    def parse_figma_node(figma_node: dict):
-        node = Node()
+    def parse_figma_node(id: int, figma_node: dict):
+        node = UiNode(id)
         node.name = figma_node["name"]
         node.figma_type = figma_node["type"]
 
         if node.figma_type != "TEXT":
-            for element in ["r", "g", "b", "a"]:
-                node.bg_color[element] = float(figma_node["fills"][0]["color"][element])
+            if len(figma_node["fills"]) > 0:
+                for element in ["r", "g", "b", "a"]:
+                    node.bg_color[element] = float(figma_node["fills"][0]["color"][element])
+            else:
+                node.bg_color.a = 0
 
             if len(figma_node["strokes"]) > 0:
                 for element in ["r", "g", "b", "a"]:
                     node.border.color[element] = float(figma_node["strokes"][0]["color"][element])
                 node.border.style = figma_node["strokes"][0]["type"]
-                node.border.weight = figma_node["strokeWeight"]
-                node.border.radius = figma_node["cornerRadius"]
+                node.border.weight = figma_node["strokeWeight"]  
+
+                if "cornerRadius" in figma_node.keys():
+                    node.border.radius = figma_node["cornerRadius"]
+                else:
+                    node.border.radius = 0
             else:
                 node.border = None
+
         else:
             for element in ["r", "g", "b", "a"]:
                 node.text_color[element] = float(figma_node["fills"][0]["color"][element])

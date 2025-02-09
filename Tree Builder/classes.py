@@ -1,4 +1,6 @@
 from __future__ import annotations
+import math
+
 
 import json
 from rich.console import Console
@@ -12,14 +14,13 @@ def log_json(json_object):
     console.print(Columns([panel]))
 
 
-
 class Point:
     x: float
     y: float
     
-    def __init__(self):
-        self.x = 0
-        self.y = 0
+    def __init__(self, x=0, y=0):
+        self.x = x
+        self.y = y
 
     def __setitem__(self, key, value):
         if key == "x":
@@ -27,11 +28,29 @@ class Point:
         else:
             self.y = value
 
+    def __add__(self, point: Point):
+        return Point(self.x + point.x, self.y + point.y)
+    
+    def __truediv__(self, scalar: float):
+        if scalar == 0:
+            raise ZeroDivisionError()
+        return Point(self.x / scalar, self.y / scalar)
+    
+    def angle(self, point: Point):
+        angle = math.atan2(point.y - self.y, point.x - self.x)
+        return math.degrees(angle)
+
+    def euclidean_distance(self, point: Point):
+        return math.sqrt( (self.x - point.x) ** 2 + (self.y - point.y) ** 2)
+    
+    def manhatten_distance(self, point: Point):
+        return (self.x - point.x) + (self.y + point.y)
+
     def get_json_format(self):
         return {"x": self.x, "y": self.y}
 
     def log(self):
-        log_json(self.get_json_format())
+        log_json(self.get_json_format())   
 
 class Rectangle:
     width: float
@@ -116,43 +135,115 @@ class Border:
         log_json(self.get_json_format())
 
 class Node:
-    name: str 
-    figma_type: str  
-    position: Point 
-    size: Rectangle  
-    text_color: Color | None
-    bg_color: Color | None
-    border: Border | None
+    id: int
+    name: str
+    figma_type: str
+    position: Point
+    size: Rectangle
     parent: Node | None
-    children: list[Node] 
+    children: list[Node]
 
-    def __init__(self):
+    def __init__(self, id: int):
+        self.id = id
         self.name = ""
-        self.figma_type = ""
-        self.position = Point()
+        self.figma_type = "FRAME"
+        self.position = Point(0, 0)
         self.size = Rectangle()
-        self.text_color = Color()
-        self.bg_color = Color()
-        self.border = Border()
         self.parent = None
         self.children = []
     
-    def log(self):
-        json_object=  {
-            "name": self.name,
+    def center(self):
+        return Point(x=self.position.x + (self.size.width / 2), y=self.position.y + (self.size.height / 2))
+
+    def area(self):
+        return self.size.width * self.size.height
+
+    def is_inside(self, node: Node):
+        if node.position.x + node.size.width < self.position.x or node.position.x > self.position.x + self.size.width:
+            return False
+        
+        if node.position.y + node.size.height < self.position.y or node.position.y > self.position.y + self.size.height:
+            return False
+
+        return True
+    
+    def distance(self, node: Node):
+        center_1 = self.center()
+        center_2 = node.center()
+        if self.is_inside(node) or node.is_inside(self):
+            return -1
+        angle = center_1.angle(center_2)
+
+        if angle > -45 and angle < 45:
+            return abs(node.position.x - (self.position.x + self.size.width))
+        elif angle >= 45 and angle < 135:
+            return abs(self.position.y - (node.position.y + node.size.height))
+        elif (angle >= 135 and angle <= 180) or (angle >= -180 and angle < -135):
+            return abs(self.position.x - (node.position.x + node.size.width))
+        else:
+            return abs(node.position.y - (self.position.y + self.size.height))
+
+
+    def to_dict(self):
+        return {
+            "id": self.id,
             "figma_type": self.figma_type,
             "position": self.position.get_json_format(),
             "size": self.size.get_json_format(),
+            "parent": self.parent.id if self.parent is not None else None,
+            # "children": ", ".join([child.id for child in self.children])
+        }
+               
+    def log(self):
+        log_json(self.to_dict())
+
+class UiNode(Node):
+    text_color: Color | None
+    bg_color: Color | None
+    border: Border | None
+
+    def __init__(self, id: int):
+        super().__init__(id)
+        self.text_color = Color()
+        self.bg_color = Color()
+        self.border = Border()
+
+    def to_dict(self):
+        tempelate = super().to_dict()
+        tempelate.update({
+            "name": self.name,
             "color": str(self.text_color) if self.text_color is not None else None,
             "backgroundColor": str(self.bg_color) if self.bg_color is not None else None,
             "border": str(self.border) if self.border is not None else None,
-            "parent": self.parent,
-            "children": self.children
-        }
+        }) 
+        return tempelate
 
-        log_json(json_object)
+    
+        
+# for now it is just something to make it readable -- may add some attributes later
+class GroupNode(Node):
+    def __init__(self, id):
+        super().__init__(id)
+        self.initialized = False
+        self.name = f"Grouping {id}"
 
+    def append_child(self, child: Node):
+        if not self.initialized:
+            self.position.x = child.position.x
+            self.position.y = child.position.y
+            self.size.width = child.size.width
+            self.size.height = child.size.height
+            self.initialized = True
+        else:
+            x_right = max(self.position.x + self.size.width, child.position.x + child.size.width)
+            y_height = max(self.position.y + self.size.height, child.position.y + child.size.height)
 
-class GroupNode:
-    children: Node
+            self.position.x = min(self.position.x, child.position.x)
+            self.position.y = min(self.position.y, child.position.y)
+
+            self.size.width = x_right - self.position.x
+            self.size.height = y_height - self.position.y
+
+        self.children.append(child)
+        return self
         

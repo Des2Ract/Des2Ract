@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+from utilities import log_json
 load_dotenv()
 
 class API:
@@ -12,6 +13,7 @@ class API:
         }
         response = requests.get(url = url, headers=headers)
         data = response.json()
+        
         return data
         
 

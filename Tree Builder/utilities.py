@@ -22,12 +22,18 @@ class Utils:
         pass
 
     @staticmethod
-    def filter_leaf_elements(page_data: dict):
+    def filter_leaf_elements(design_data: dict, target_page: int = 0):
         leaf_nodes = []
         queue : Queue = Queue()
-        queue.put(page_data["document"]["children"][0]["children"][0])
-        x_offset = int(page_data["document"]["children"][0]["children"][0]["absoluteBoundingBox"]["x"])
-        y_offset = int(page_data["document"]["children"][0]["children"][0]["absoluteBoundingBox"]["y"])
+        
+        page_data = design_data["document"]["children"][target_page]
+        if page_data["type"] == "CANVAS":
+            page_data = page_data["children"][0]
+
+        queue.put(page_data)
+        x_offset = int(page_data["absoluteBoundingBox"]["x"])
+        y_offset = int(page_data["absoluteBoundingBox"]["y"])
+
         #TODO: Here We Will Have Multiple Pages, So We Need To Find A Way to handle that later
         while not queue.empty():
             top : dict = queue.get()
@@ -48,7 +54,7 @@ class Utils:
         node.figma_type = figma_node["type"]
 
         if node.figma_type != "TEXT":
-            if len(figma_node["fills"]) > 0:
+            if len(figma_node["fills"]) > 0 and "color" in figma_node["fills"][0]:
                 for element in ["r", "g", "b", "a"]:
                     node.bg_color[element] = float(figma_node["fills"][0]["color"][element])
             else:

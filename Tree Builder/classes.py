@@ -137,9 +137,11 @@ class Border:
 class Node:
     id: int
     name: str
+    depth: int
     figma_type: str
     position: Point
     size: Rectangle
+    rotation: float
     parent: Node | None
     children: list[Node]
 
@@ -149,8 +151,14 @@ class Node:
         self.figma_type = "FRAME"
         self.position = Point(0, 0)
         self.size = Rectangle()
+        self.rotation = 0
         self.parent = None
         self.children = []
+
+    def left(self): return self.position.x
+    def right(self): return self.position.x + self.size.width
+    def top(self): return self.position.y
+    def bottom(self): return self.position.y + self.size.height
     
     def center(self):
         return Point(x=self.position.x + (self.size.width / 2), y=self.position.y + (self.size.height / 2))
@@ -158,20 +166,59 @@ class Node:
     def area(self):
         return self.size.width * self.size.height
 
+    def line_border(self, line: Node, rectangle: Node):
+        THRSH = 5
+        if line.size.width >= rectangle.size.width:
+            return abs(line.top() - rectangle.bottom()) < THRSH or abs(rectangle.top() - line.bottom()) < THRSH
+        
+        if line.size.height >= rectangle.size.height:
+            return abs(line.left() - rectangle.right()) < THRSH or abs(rectangle.left() - line.right()) < THRSH
+
+        return False
+    
+
+
     def is_inside(self, node: Node):
-        if node.position.x + node.size.width < self.position.x or node.position.x > self.position.x + self.size.width:
+        if self.name == "Profile":
+            "here"
+
+        NONE_INTERSECTING_ELEMENTS = [
+            "LINE",
+            "TEXT", 
+            "VECTOR"
+        ]
+
+        if self.id > node.id:
             return False
         
-        if node.position.y + node.size.height < self.position.y or node.position.y > self.position.y + self.size.height:
+        if self.area() > node.area():
+            return False
+        
+        if  self.figma_type in NONE_INTERSECTING_ELEMENTS and \
+            node.figma_type in NONE_INTERSECTING_ELEMENTS:
             return False
 
+        THRSH = 3
+
+        if self.left() < node.left() - THRSH \
+        or self.right() > node.right() + THRSH\
+        or self.top() < node.top() - THRSH \
+        or self.bottom() > node.bottom() + THRSH:
+            if self.figma_type == "LINE" and node.figma_type != "LINE":
+                return self.line_border(self, node)
+            return False
         return True
+    
+        
     
     def distance(self, node: Node):
         center_1 = self.center()
         center_2 = node.center()
-        if self.is_inside(node) or node.is_inside(self):
-            return -1
+        if self.is_inside(node):
+            return -1 * self.area()
+        elif node.is_inside(self):
+            return -1 * node.area()
+        
         angle = center_1.angle(center_2)
 
         if angle > -45 and angle < 45:

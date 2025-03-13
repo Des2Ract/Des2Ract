@@ -1,201 +1,70 @@
 from __future__ import annotations
-import math
-
-
-import json
-from rich.console import Console
-from rich.columns import Columns
-from rich.panel import Panel
-def log_json(json_object):
-    json_string = json.dumps(json_object, indent=4)
-
-    console = Console()
-    panel = Panel(json_string, title="", expand=True)
-    console.print(Columns([panel]))
-
-
-class Point:
-    x: float
-    y: float
-    
-    def __init__(self, x=0, y=0):
-        self.x = x
-        self.y = y
-
-    def __setitem__(self, key, value):
-        if key == "x":
-            self.x = value
-        else:
-            self.y = value
-
-    def __add__(self, point: Point):
-        return Point(self.x + point.x, self.y + point.y)
-    
-    def __truediv__(self, scalar: float):
-        if scalar == 0:
-            raise ZeroDivisionError()
-        return Point(self.x / scalar, self.y / scalar)
-    
-    def angle(self, point: Point):
-        angle = math.atan2(point.y - self.y, point.x - self.x)
-        return math.degrees(angle)
-
-    def euclidean_distance(self, point: Point):
-        return math.sqrt( (self.x - point.x) ** 2 + (self.y - point.y) ** 2)
-    
-    def manhatten_distance(self, point: Point):
-        return (self.x - point.x) + (self.y + point.y)
-
-    def get_json_format(self):
-        return {"x": self.x, "y": self.y}
-
-    def log(self):
-        log_json(self.get_json_format())   
-
-class Rectangle:
-    width: float
-    height: float
-    
-    def __init__(self):
-        self.width = 0
-        self.height = 0
-
-    def __setitem__(self, key, value):
-        if key == "width":
-            self.width = value
-        else:
-            self.height = value
-    
-    def get_json_format(self):
-        return {"width": self.width, "height": self.height}
-
-    def log(self):
-        log_json(self.get_json_format())
-    
-class Color:
-    r: float
-    g: float
-    b: float
-    a: float
-    
-    def __init__(self):
-        self.r = 0
-        self.g = 0
-        self.b = 0
-        self.a = 0
-
-    def __setitem__(self, key, value):
-        if key == "r":
-            self.r = value
-        elif key == "g":
-            self.g = value
-        elif key == "b":
-            self.b = value
-        else:
-            self.a = value
-    
-    def __str__(self):
-        return f"rgba({self.r}, {self.g}, {self.b}, {self.a})"
-
-    def get_json_format(self):
-        return {"color": f"rgba({self.r}, {self.g}, {self.b}, {self.a})"}
-
-    def log(self):
-        log_json(self.get_json_format())
-
-class Border:
-    weight: float
-    color: Color
-    radius: float
-    style: str
-
-    def __init__(self):
-        self.weight = 0
-        self.color = Color()
-        self.radius = 0
-        self.style = ""
-
-    def __setitem__(self, key, value):
-        if key == "weight":
-            self.weight = value
-        elif key == "radius":
-            self.radius = value
-        elif key == "style":
-            self.style = value
-        else:
-            pass
-
-    def __str__(self):
-        return f"{self.weight}px {self.style} {str(self.color)}"
-    
-    def get_json_format(self):
-        return {"border": f"{self.weight}px {self.style} {str(self.color)}"}
-
-    def log(self):
-        log_json(self.get_json_format())
+from utils import *
+import numpy as np
+def calculate_angle(point_1: tuple[float, float], point_2: tuple[float, float]):
+    angle = math.atan2(point_2[1] - point_1[1], point_2[0] - point_1[0])
+    return math.degrees(angle)
 
 class Node:
-    id: int
-    name: str
-    depth: int
-    figma_type: str
-    position: Point
-    size: Rectangle
-    rotation: float
-    parent: Node | None
     children: list[Node]
-
+    parent: Node
     def __init__(self, id: int):
         self.id = id
         self.name = ""
         self.figma_type = "FRAME"
-        self.position = Point(0, 0)
-        self.size = Rectangle()
+
+        self.x = 0
+        self.y = 0
+        self.width = 0
+        self.height = 0
         self.rotation = 0
+        
         self.parent = None
         self.children = []
+        self.iconChildren = []
 
-    def left(self): return self.position.x
-    def right(self): return self.position.x + self.size.width
-    def top(self): return self.position.y
-    def bottom(self): return self.position.y + self.size.height
-    
-    def center(self):
-        return Point(x=self.position.x + (self.size.width / 2), y=self.position.y + (self.size.height / 2))
+        self.text = ""
+        self.textColor = (0, 0, 0, 0)
+        self.bgColor = (0, 0, 0, 0)
+        self.borderColor = (0, 0, 0, 0)
+        self.borderRadius = 0
+        self.borderWeight = 0
 
-    def area(self):
-        return self.size.width * self.size.height
+
+        self.layout = None
+
+
+    def left(self):     return min([self.x] + [child.left() for child in self.children])
+    def right(self):    return max([self.x + self.width] + [child.right() for child in self.children])
+    def top(self):      return min([self.y] + [child.top() for child in self.children])
+    def bottom(self):   return max([self.y + self.height] + [child.bottom() for child in self.children])
+    def area(self):     return (self.right() - self.left()) * (self.bottom() - self.top())
+    def center(self):   return np.mean( [(self.x + self.width / 2, self.y + self.height / 2)] + [child.center() for child in self.children], axis=0)
+
+    def isText(self):    return self.figma_type in ["TEXT"]
+    def isLine(self):    return self.figma_type in ["LINE"]
+    def isIconPart(self):   return self.figma_type in ["VECTOR"]
+    def isImage(self):  return False # modify this later
 
     def line_border(self, line: Node, rectangle: Node):
         THRSH = 5
-        if line.size.width >= rectangle.size.width:
+        if line.width >= rectangle.width:
             return abs(line.top() - rectangle.bottom()) < THRSH or abs(rectangle.top() - line.bottom()) < THRSH
         
-        if line.size.height >= rectangle.size.height:
+        if line.height >= rectangle.height:
             return abs(line.left() - rectangle.right()) < THRSH or abs(rectangle.left() - line.right()) < THRSH
 
         return False
-    
 
+    def isInside(self, node: Node):
+        NONE_INTERSECTING_ELEMENTS = [ "LINE", "TEXT", "VECTOR"]
 
-    def is_inside(self, node: Node):
-        if self.name == "Profile":
-            "here"
-
-        NONE_INTERSECTING_ELEMENTS = [
-            "LINE",
-            "TEXT", 
-            "VECTOR"
-        ]
-
-        if self.id > node.id:
-            return False
-        
+        # if the current node is behind the other node (lower z index)
         if self.area() > node.area():
             return False
         
-        if  self.figma_type in NONE_INTERSECTING_ELEMENTS and \
-            node.figma_type in NONE_INTERSECTING_ELEMENTS:
+        # if the elements can't intersect
+        if  self.figma_type in NONE_INTERSECTING_ELEMENTS and node.figma_type in NONE_INTERSECTING_ELEMENTS:
             return False
 
         THRSH = 3
@@ -209,27 +78,25 @@ class Node:
             return False
         return True
     
-        
-    
     def distance(self, node: Node):
         center_1 = self.center()
         center_2 = node.center()
-        if self.is_inside(node):
+        if self.isInside(node):
             return -1 * self.area()
-        elif node.is_inside(self):
+        
+        elif node.isInside(self):
             return -1 * node.area()
         
-        angle = center_1.angle(center_2)
+        angle = calculate_angle((center_1[0], center_1[1]), (center_2[0], center_2[1]))
 
         if angle > -45 and angle < 45:
-            return abs(node.position.x - (self.position.x + self.size.width))
+            return abs(node.left() - node.right())
         elif angle >= 45 and angle < 135:
-            return abs(self.position.y - (node.position.y + node.size.height))
+            return abs(self.top() - node.bottom())
         elif (angle >= 135 and angle <= 180) or (angle >= -180 and angle < -135):
-            return abs(self.position.x - (node.position.x + node.size.width))
+            return abs(self.left() - node.right())
         else:
-            return abs(node.position.y - (self.position.y + self.size.height))
-
+            return abs(node.top() - self.bottom())
 
     def to_dict(self):
         return {
@@ -240,57 +107,30 @@ class Node:
             "parent": self.parent.id if self.parent is not None else None,
             # "children": ", ".join([child.id for child in self.children])
         }
-               
+    def appendChildren(self, children: list[Node]):
+        for child in children:
+            found = False
+            for currentChild in self.children:
+                found |= currentChild.id == child.id
+
+            if not found:
+                self.children.append(child)
+            else:
+                print("sus")
+
+            child.parent = self
+
+    def maintainTreeConsistency(self):
+        it = 0
+        while it < len(self.children):
+            child = self.children[it]
+            if child.parent.id != self.id:
+                self.children.remove(child)
+            else:
+                it += 1
+        
+        for child in self.children:
+            child.maintainTreeConsistency()
+
     def log(self):
         log_json(self.to_dict())
-
-class UiNode(Node):
-    text_color: Color | None
-    bg_color: Color | None
-    border: Border | None
-
-    def __init__(self, id: int):
-        super().__init__(id)
-        self.text_color = Color()
-        self.bg_color = Color()
-        self.border = Border()
-
-    def to_dict(self):
-        tempelate = super().to_dict()
-        tempelate.update({
-            "name": self.name,
-            "color": str(self.text_color) if self.text_color is not None else None,
-            "backgroundColor": str(self.bg_color) if self.bg_color is not None else None,
-            "border": str(self.border) if self.border is not None else None,
-        }) 
-        return tempelate
-
-    
-        
-# for now it is just something to make it readable -- may add some attributes later
-class GroupNode(Node):
-    def __init__(self, id):
-        super().__init__(id)
-        self.initialized = False
-        self.name = f"Grouping {id}"
-
-    def append_child(self, child: Node):
-        if not self.initialized:
-            self.position.x = child.position.x
-            self.position.y = child.position.y
-            self.size.width = child.size.width
-            self.size.height = child.size.height
-            self.initialized = True
-        else:
-            x_right = max(self.position.x + self.size.width, child.position.x + child.size.width)
-            y_height = max(self.position.y + self.size.height, child.position.y + child.size.height)
-
-            self.position.x = min(self.position.x, child.position.x)
-            self.position.y = min(self.position.y, child.position.y)
-
-            self.size.width = x_right - self.position.x
-            self.size.height = y_height - self.position.y
-
-        self.children.append(child)
-        return self
-        

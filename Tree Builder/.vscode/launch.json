@@ -4,16 +4,12 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "tree_builder.py",
             "type": "debugpy",
             "request": "launch",
             "program": "tree_builder.py",
-            "console": "integratedTerminal",
-            "args": [
-                "${command:pickArgs}"
-            ]
+            "console": "integratedTerminal"
         }
     ]
 }

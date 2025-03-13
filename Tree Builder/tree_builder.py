@@ -1,162 +1,130 @@
-import os
-from urllib.parse import urlparse, parse_qs
-from gateway import API
-from utilities import Utils
-from classes import GroupNode, Node
-from queue import Queue
-from anytree import Node, RenderTree
+from utils import *
+from debug import *
+from api import *
+from classes import *
 
+# ======================================================
+# ================== ALGORITHM FUNCS ===================
+# ======================================================
+def handleContainedNodes(root: Node): 
+    nodes = root.children.copy()
+    nodes.sort(key=lambda n: (n.x, n.y, -n.area(), n.id))
 
-def debug_tree(root: GroupNode):
-    queue : Queue[Node] = Queue()
-    queue.put((root, Node(root, parent=None)))
-    while not queue.empty():
-        (top, prev_parent) = queue.get()
-        for child in top.children:
-            next_parent = Node(f"Child {child.name}", parent=prev_parent)
-            queue.put((child, next_parent))
-    
-    # Render the tree
-    for pre, _, node in RenderTree(root):
-        print(f"{pre}{node.name}")
-
-
-class TreeBuilder:
-    def __init__(self, figma_file_url: str):
-        parsed_url = urlparse(figma_file_url)
-        file_key = parsed_url.path.split("/")[int(os.getenv("FIGMA_FILE_KEY_INDEX"))]
-        query = parse_qs(parsed_url.query)
-        if "node-id" in query:
-            root_id = query["node-id"][0]
-        else:
-            root_id = None
-    
-        figma_json_file = API.get_figma_tree(file_key=file_key, root_id=root_id)
-        leaf_nodes = Utils.filter_leaf_elements(figma_json_file)
-        self.nodes = [ Utils.parse_figma_node(element) for element in leaf_nodes ]
-        self.nodes.sort(key=lambda node: node.area())
-
-    def __make_distance_matrix(self, nodes: list[Node]):
-        n = len(nodes)
-        distance_matrix = [ [0 for _ in range(n)] for __ in range(n) ]
-
-        for i, node in enumerate(nodes):
-            for j, other_node in enumerate(nodes):
-                distance_matrix[i][j] = node.distance(other_node)
-        return distance_matrix
-    
-    def get_best_connection(self, nodes: list[Node]):
-        if len(nodes) == 1:
-            return None
-        
-        distance_matrix = self.__make_distance_matrix(nodes)
-        best_id = (0, 1, distance_matrix[0][1])
-        n = len(distance_matrix)
-        for id_1 in range(n):
-            for id_2 in range(n):
-                if id_1 == id_2:
-                    continue
-                if distance_matrix[id_1][id_2] < distance_matrix[best_id[0]][best_id[1]]:
-                    best_id = (id_1, id_2, distance_matrix[id_1][id_2])
-        return best_id
-    
-    def get_contained_nodes(self, nodes: list[Node]):
-        connection = None
-        for id, node in enumerate(nodes):
-            for other_id, other_node in enumerate(nodes):
-                if id != other_id and node.is_inside(other_node):
-                    connection = (id, other_id)
-                    break
-            if connection is not None:
+    i = 0
+    while i < len(nodes):
+        node = nodes[i]
+        for othernode in reversed(nodes[ : i]):
+            if node.isInside(othernode):
+                othernode.appendChildren([node])
                 break
-        return connection
+        i += 1
+    
+    root.children = []
+    for node in nodes:
+        if node.parent.id == root.id:
+            root.appendChildren([node])
 
-    def cluster_sub_regions(self, nodes: list[Node]):
-        best_connection = self.get_contained_nodes(nodes)
-        while best_connection is not None:
-            nodeA = nodes[best_connection[0]]
-            nodeB = nodes[best_connection[1]]
+def findOccupiedXSpace(root: Node):
+    occupied = [(0, 0)]
+    for child in root.children:
+        occupied.append(( child.left(), child.right() ))
+    right = root.right()
+    occupied.append([right, right])
 
-            if nodeA.is_inside(nodeB):
-                nodeB.children.append(nodeA)
-                nodes.remove(nodeA)
+    occupied.sort(key=lambda node: (node[0], node[1]))
+
+    i = 0
+    while i < len(occupied) - 1:
+        l1, r1 = occupied[i]
+        l2, r2 = occupied[i + 1]
+
+        # whole section is inside
+        if l2 >= r1:
+            i += 1
+        else:            
+            occupied[i] = ( l1, max(r1, r2) )
+            occupied.pop(i + 1)
+    
+    return occupied
+
+def findOccupiedYSpace(root: Node):
+    occupied = [(0, 0)]
+    for child in root.children:
+        occupied.append(( child.top(), child.bottom() ))
+    bot = root.bottom()
+    occupied.append([bot, bot])
+
+    occupied.sort(key=lambda node: (node[0], node[1]))
+
+    i = 0
+    while i < len(occupied) - 1:
+        t1, b1 = occupied[i]
+        t2, b2 = occupied[i + 1]
+
+        # whole section is inside
+        if t2 >= b1:
+            i += 1
+        else:            
+            occupied[i] = ( t1, max(b1, b2) )
+            occupied.pop(i + 1)
+    
+    return occupied
+
+def makeLayout(root: Node):
+    queue : Queue = Queue()
+    queue.put((root, "columns"))
+
+    while not queue.empty():
+        subroot, dir = queue.get()
+
+        for child in subroot.children:
+            queue.put((child, "rows" if dir == "columns" else "columns"))
+
+        occupied = findOccupiedYSpace(subroot) if dir == "rows" else findOccupiedXSpace(subroot)
+
+        for section in occupied:
+            top, bottom = section if dir == "rows" else (subroot.top(), subroot.bottom())
+            left, right = section if dir == "columns" else (subroot.left(), subroot.right())
+
+            nodes = getNodesBetween(subroot, top=top, bottom=bottom, left=left, right=right)
+
+            if dir == "rows":
+                nodes.sort(key=lambda n: (n.x, n.y, -n.area(), n.id))
             else:
-                nodeA.children.append(nodeB)
-                nodes.remove(nodeB)
+                nodes.sort(key=lambda n: (n.y, n.x, -n.area(), n.id))
 
-            best_connection = self.get_contained_nodes(nodes)
-        return nodes
-    # def connect_nodes(self, distance_matrix: list[list], best_connection: tuple):
-
-    def print_node_with_id(self, id: int):
-        for node in self.nodes:
-            if node.id == id:
-                node.log()
-                return
-
-    def cluster(self):
-        distance_matrix = self.__make_distance_matrix(self.nodes)
-
-        nodes_copy = self.nodes.copy()
-        id = len(nodes_copy)
-
-        best_connection = self.get_best_connection(distance_matrix)
-        while best_connection is not None:
-            group = GroupNode(id)
-            id += 1
-            nodeA, nodeB = nodes_copy[best_connection[0]], nodes_copy[best_connection[1]]
-
-            if id == 51:
-                print("d")
-
-            if best_connection[2] is False:
-                nodeA.parent = group
-                nodeB.parent = group
-                group.append_child(nodeA).append_child(nodeB)
-                
-                nodes_copy.remove(nodeA)
-                nodes_copy.remove(nodeB)
-                nodes_copy.append(group)
-            elif nodeA.is_inside(nodeB):
-                nodeA.parent = nodeB
-                nodeB.children.append(nodeA)
-                nodes_copy.remove(nodeA)
-            else:
-                nodeB.parent = nodeA
-                nodeA.children.append(nodeB)
-                nodes_copy.remove(nodeB)
-            
-            nodes_copy.sort(key=lambda node: node.area())
-            distance_matrix = self.__make_distance_matrix(nodes_copy)
-            best_connection = self.get_best_connection(distance_matrix)
-        self.debug_tree(nodes_copy[0])
-
-    # second approch
-    def cluster(self, nodes : list[Node]=None):
-        if nodes is None: 
-            nodes = self.nodes
-            nodes.sort(key=lambda node: node.id, reverse=True)
-
-        if len(nodes) == 0: return [] 
-
-        clustered_nodes = self.cluster_sub_regions(nodes) 
-        for node in clustered_nodes:
-            clustered_children = self.cluster(node.children)
-            node.children = clustered_children
-        
-        return nodes
-        
-
-# tree_builder = TreeBuilder(figma_file_url="https://www.figma.com/design/KJyVqweJFdfHOVzY3MPDRw/FIG-EXAMPLE-(Community)?node-id=16-172&t=ndbeAyT9TWX2Wojd-0")
-# tree_builder = TreeBuilder(figma_file_url="https://www.figma.com/design/QpKlDdGRvg7DRe9NvXQRtZ/PUBLIC-SPACE-(Community)?node-id=0-1&p=f&t=25YO3NwZftMFXRBJ-0")
-# tree_builder = TreeBuilder(figma_file_url="https://www.figma.com/design/7AdW2tcD7EAj92Ul9lCfUt/Desktop-sign-up-and-login-pages-by-EditorM-(Community)?node-id=0-1&p=f&t=tUKrWjhLVN2PDG5L-0")
-tree_builder = TreeBuilder(figma_file_url="https://www.figma.com/design/m0ORoL6sZmV3Mh8v40gy06/Furniture-Store-Figma-Template-(Community)?node-id=1-61&t=5qgfYlMcHKhQ6Roo-0")
-
-# ok
-# tree_builder = TreeBuilder(figma_file_url="https://www.figma.com/design/KJyVqweJFdfHOVzY3MPDRw/FIG-EXAMPLE-(Community)?node-id=16-172&t=hOTX01LOyxZrB3r2-0")
+            if len(nodes) > 0:
+                row = Node(generateId())
+                row.name = ("Row " if dir == "rows" else "Column ") + str(row.id)
+                row.appendChildren(nodes)
+                for node in nodes:
+                    subroot.children.remove(node)
+                subroot.appendChildren([row])
 
 
-trees = tree_builder.cluster()
+# figmaFile = "https://www.figma.com/design/vWwqbxLzg15hcpOjoOhQ1M/qr-code-component?node-id=0-1469&t=TGy3WIKxJx9asl08-0"
+figmaFile = "https://www.figma.com/design/QpKlDdGRvg7DRe9NvXQRtZ/PUBLIC-SPACE-(Community)?node-id=18-7&t=LsYsHDfY3ZS2xL9k-0"
 
-for root in trees:
-    debug_tree(root)
+# ======================================================
+# ======================== MAIN ========================
+# ======================================================
+
+def build_tree(figmaUrl: str):
+    # input parsing
+    figmaJsonFile           = getFigmaFileFromUrl(figmaUrl)
+    jsonNodes               = parseFigmaJsonFile(figmaJsonFile)
+    fileNodes : list[Node]  = parseJsonNodes(jsonNodes)
+
+    # building the tree
+    root = Node(-1)
+    root.appendChildren(fileNodes)
+    handleContainedNodes(root)
+    normalizeNodes(root)
+    makeLayout(root)
+
+    return root
+
+
+root = build_tree(figmaFile)
+debug_tree(root)
+quit()

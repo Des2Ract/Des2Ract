@@ -25,7 +25,6 @@ def generateId ():
 
 def log_json(json_object):
     json_string = json.dumps(json_object, indent=4)
-
     console = Console()
     panel = Panel(json_string, title="", expand=True)
     console.print(Columns([panel]))
@@ -173,7 +172,7 @@ def normalizeNodes(root: DesignNode):
             root.iconChildren.append(iconId) # a reference to this icon
 
         # set the type of this node to ICON and clear its children
-        root.figma_type = "ICON"
+        root.name = "ICON " + "-".join([ str(iconId) for iconId in root.iconChildren ])  
         root.children = []
     
     return allChildrenIconsPart, textFound

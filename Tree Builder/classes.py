@@ -33,18 +33,23 @@ class Node:
 
         self.layout = None
 
-
     def left(self):     return min([self.x] + [child.left() for child in self.children])
     def right(self):    return max([self.x + self.width] + [child.right() for child in self.children])
     def top(self):      return min([self.y] + [child.top() for child in self.children])
     def bottom(self):   return max([self.y + self.height] + [child.bottom() for child in self.children])
+    def calculatedWidth(self): return self.right() - self.left()
+    def calculatedHeight(self): return self.bottom() - self.top()
     def area(self):     return (self.right() - self.left()) * (self.bottom() - self.top())
     def center(self):   return np.mean( [(self.x + self.width / 2, self.y + self.height / 2)] + [child.center() for child in self.children], axis=0)
 
     def isText(self):    return self.figma_type in ["TEXT"]
     def isLine(self):    return self.figma_type in ["LINE"]
+    def isLeaf(self):    return self.figma_type in ["TEXT", "LINE", "VECTOR"]
     def isIconPart(self):   return self.figma_type in ["VECTOR"]
     def isImage(self):  return False # modify this later
+
+    def allXPos(self): return ([self.x] if self.x < 10000 else []) + [child.x for child in self.children]
+    def allYPos(self): return ([self.y] if self.y < 10000 else []) + [child.y for child in self.children]
 
     def line_border(self, line: Node, rectangle: Node):
         THRSH = 5
@@ -107,6 +112,7 @@ class Node:
             "parent": self.parent.id if self.parent is not None else None,
             # "children": ", ".join([child.id for child in self.children])
         }
+    
     def appendChildren(self, children: list[Node]):
         for child in children:
             found = False

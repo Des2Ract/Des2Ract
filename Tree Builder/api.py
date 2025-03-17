@@ -3,8 +3,8 @@ from urllib.parse import urlparse, parse_qs
 
 FIGMA_API_KEY = "figd_o72r2VUukQuXx7Rm4DRHaBrhsyGTx6ZK1MHzFsUE"
 
-def requestFigmaFileImage(figmaFileKey: str, nodeId: str | None, scale: float = 1.0):
-    url = "https://api.figma.com/v1/images/:file_key?ids=:ids".replace(":file_key", figmaFileKey).replace(":ids", nodeId.replace(":", "-"))
+def requestFigmaFileImage(figmaFileKey: str, nodeId: str | None, format: str = "jpg"):
+    url = "https://api.figma.com/v1/images/:file_key?ids=:ids&format=:format".replace(":file_key", figmaFileKey).replace(":ids", nodeId.replace(":", "-")).replace(":format", format)
 
     headers = {
         "X-FIGMA-TOKEN": FIGMA_API_KEY
@@ -13,17 +13,32 @@ def requestFigmaFileImage(figmaFileKey: str, nodeId: str | None, scale: float = 
     data = response.json()
 
     imageUrl = data["images"][nodeId.replace("-", ":")]
-    outputFile = f"debug/test.jpg"
+    outputFile = f"debug/test.{format}"
     with open(outputFile, "wb") as f:
         f.write(requests.get(imageUrl).content)
 
     return data
+
+def requestFigmaFileContentImages(figmaFileKey: str):
+    url = "https://api.figma.com/v1/files/:file_key/images".replace(":file_key", figmaFileKey)
+
+    headers = {
+        "X-FIGMA-TOKEN": FIGMA_API_KEY
+    }
+    response = requests.get(url = url, headers=headers)
+    data = response.json()["meta"]["images"]
+
+    return data
+
 def requestFigmaFile(figmaFileKey: str, nodeId: str | None):
     if nodeId is None:
         url = "https://api.figma.com/v1/files/:file_key".replace(":file_key", figmaFileKey)
     else:
         url = "https://api.figma.com/v1/files/:file_key/nodes?ids=:id".replace(":file_key", figmaFileKey).replace(":id", nodeId)
-        requestFigmaFileImage(figmaFileKey, nodeId)
+        requestFigmaFileImage(figmaFileKey, nodeId, format="jpg")
+
+        # uncomment to download svg
+        # requestFigmaFileImage(figmaFileKey, nodeId, format="svg")
 
     headers = {
         "X-FIGMA-TOKEN": FIGMA_API_KEY
@@ -49,4 +64,4 @@ def getFigmaFileFromUrl(url: str):
     else:
         rootId = None
 
-    return requestFigmaFile(fileKey, rootId)
+    return requestFigmaFile(fileKey, rootId), requestFigmaFileContentImages(fileKey)

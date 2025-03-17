@@ -1,9 +1,39 @@
-from __future__ import annotations
+from __future__ import annotations        
+from sklearn.metrics.pairwise import cosine_similarity
+from difflib import SequenceMatcher
 from utils import *
 import numpy as np
 def calculate_angle(point_1: tuple[float, float], point_2: tuple[float, float]):
     angle = math.atan2(point_2[1] - point_1[1], point_2[0] - point_1[0])
     return math.degrees(angle)
+
+
+def normalizeColor(color: tuple[int, int, int, int]):
+    if color[0] > 1 and color[1] > 1 and color[2] > 1 and color[3] > 1:
+        return [color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255]
+    return [color[0], color[1], color[2], color[3]]
+
+def textPatternToVec(text: str):
+    vec = []
+    sum = 0
+    for char in text:
+        if char == "W":
+            vec.append(1)
+        elif char == "D":
+            vec.append(2)
+        elif char == "S":
+            vec.append(3)
+        elif char == ".":
+            vec.append(4)
+        elif char == "_":
+            vec.append(5)
+        elif char == "#":
+            vec.append(6)
+        else:
+            vec.append(0)
+        sum += vec[-1]
+
+    return np.array(vec) / sum
 
 class Node:
     children: list[Node]
@@ -24,6 +54,10 @@ class Node:
         self.iconChildren = []
 
         self.text = ""
+        self.normalizedText = ""
+        self.imageUrl = ""
+        self.imgScaleMode = ""
+
         self.textColor = (0, 0, 0, 0)
         self.bgColor = (0, 0, 0, 0)
         self.borderColor = (0, 0, 0, 0)
@@ -45,11 +79,46 @@ class Node:
     def isText(self):    return self.figma_type in ["TEXT"]
     def isLine(self):    return self.figma_type in ["LINE"]
     def isLeaf(self):    return self.figma_type in ["TEXT", "LINE", "VECTOR"]
+    def isGroupingNode(self): return self.name.startswith("GROUP") or self.name.startswith("ROW") or self.name.startswith("COLUMN")
     def isIconPart(self):   return self.figma_type in ["VECTOR"]
     def isImage(self):  return False # modify this later
 
     def allXPos(self): return ([self.x] if self.x < 10000 else []) + [child.x for child in self.children]
     def allYPos(self): return ([self.y] if self.y < 10000 else []) + [child.y for child in self.children]
+
+    def featureVector(self):
+        features = []
+        maxLength = 100
+
+        if not self.isText():
+            features.append(self.calculatedWidth())
+            features.append(self.calculatedHeight())
+            features.append(self.area())
+            features.extend(normalizeColor(self.bgColor))
+            features.extend(normalizeColor(self.textColor))
+            features.extend(normalizeColor(self.borderColor))
+            features.append(self.borderRadius)
+            features.append(self.borderWeight)
+            features.extend( [0 for _ in range(maxLength - len(features))] )
+        else:
+            features.extend( [0 for _ in range(17)] )
+            features.extend(textPatternToVec(self.text))
+            if len(self.text) < maxLength:
+                features.extend( [0 for _ in range(maxLength - len(features))] )
+        return features
+    
+    def similarTo(self, node: Node):
+        if self.figma_type != node.figma_type: 
+            return 0
+
+        if self.isText() and node.isText():
+            selfPattern = self.text
+            nodePattern = node.text
+            return SequenceMatcher(None, selfPattern, nodePattern).ratio()
+
+        features = self.featureVector()
+        nodeFeatures = node.featureVector()
+        return abs(cosine_similarity([features], [nodeFeatures])[0][0])
 
     def line_border(self, line: Node, rectangle: Node):
         THRSH = 5
@@ -84,35 +153,21 @@ class Node:
         return True
     
     def distance(self, node: Node):
-        center_1 = self.center()
-        center_2 = node.center()
         if self.isInside(node):
             return -1 * self.area()
         
         elif node.isInside(self):
             return -1 * node.area()
         
-        angle = calculate_angle((center_1[0], center_1[1]), (center_2[0], center_2[1]))
+        distances = [
+            abs(node.left() - self.right()), 
+            abs(node.right() - self.left()),
+            abs(node.top() - self.bottom()),
+            abs(node.bottom() - self.top())
+        ]
 
-        if angle > -45 and angle < 45:
-            return abs(node.left() - node.right())
-        elif angle >= 45 and angle < 135:
-            return abs(self.top() - node.bottom())
-        elif (angle >= 135 and angle <= 180) or (angle >= -180 and angle < -135):
-            return abs(self.left() - node.right())
-        else:
-            return abs(node.top() - self.bottom())
+        return np.min(distances)
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "figma_type": self.figma_type,
-            "position": self.position.get_json_format(),
-            "size": self.size.get_json_format(),
-            "parent": self.parent.id if self.parent is not None else None,
-            # "children": ", ".join([child.id for child in self.children])
-        }
-    
     def appendChildren(self, children: list[Node]):
         for child in children:
             found = False

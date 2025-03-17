@@ -90,13 +90,14 @@ def parseFigmaJsonFile(jsonFile: dict):
 def parseJsonNodes(jsonNodes: list[dict]):
     parsedNodes = []
     for jsonNode in jsonNodes:
+        # if jsonNode["type"] in ["FRAME"]: continue
         node = DesignNode(jsonNode["id"])
         node.name = jsonNode["name"]
         node.figma_type = jsonNode["type"]
         node.rotation = jsonNode["rotation"] if "rotation" in jsonNode.keys() else 0
         
         if node.figma_type == "TEXT":
-            node.text = jsonNode["name"]
+            node.text = jsonNode["characters"]
 
         if "fills" in jsonNode.keys() and len(jsonNode["fills"]) > 0:
             if "color" in jsonNode["fills"][0]:
@@ -107,13 +108,17 @@ def parseJsonNodes(jsonNodes: list[dict]):
                     node.textColor = color
                 else:
                     node.bgColor = color
+            if "imageRef" in jsonNode["fills"][0]:
+                node.imageUrl = jsonNode["fills"][0]["imageRef"]
+                node.imgScaleMode = jsonNode["fills"][0]["scaleMode"]
+                node.name = "IMAGE " + str(node.id)
         
         if "strokes" in jsonNode.keys() and len(jsonNode["strokes"]) > 0:
             if "color" in jsonNode["strokes"][0]:
                 colorJson = jsonNode["strokes"][0]["color"]
                 color = (float(colorJson["r"]), float(colorJson["g"]), float(colorJson["b"]), float(colorJson["a"])) 
                 node.borderColor = color
-            
+             
         if "cornerRadius" in jsonNode.keys():
             node.borderRadius = float(jsonNode["cornerRadius"])
 
@@ -129,9 +134,9 @@ def normalizeTexts(root: DesignNode):
     lettersRegex = r"\b[^a-zA-Z\s]*[a-zA-Z]+[^a-zA-Z\s]*\b"
     numbersRegex = r"[0-9]+"
     spacesRegex = r"[ \t]+"
-    root.text = re.sub(lettersRegex, "/w", root.text)
-    root.text = re.sub(numbersRegex, "/d", root.text)
-    root.text = re.sub(spacesRegex,  "/s", root.text)
+    root.normalizedText = re.sub(lettersRegex, "W", root.text)
+    root.normalizedText = re.sub(numbersRegex, "D", root.normalizedText)
+    root.normalizedText = re.sub(spacesRegex,  "S", root.normalizedText)
 
 def normalizeNodes(root: DesignNode):
     global icons
@@ -197,3 +202,82 @@ def getNodesBetween(root: DesignNode, left: float, right: float, top: float, bot
         if child.left() >= left and child.right() <= right and child.top() >= top and child.bottom() <= bottom:
             nodes.append(child)
     return nodes
+
+def getNodeDirection(root : Node):
+    # this should make something that tells me that this node should be row based or column based
+    rootWidth = root.calculatedWidth()
+    rootHeight = root.calculatedHeight()
+    for child in root.children:
+        if child.calculatedWidth() / rootWidth > 0.9:
+            return "rows"
+        if child.calculatedHeight() / rootHeight > 0.9:
+            return "columns"
+        
+    xPos = root.allXPos()
+    yPos = root.allYPos()
+
+    stdX : list[int] = np.std(xPos) if len(xPos) > 1 else 0 
+    stdY : list[int] = np.std(yPos) if len(yPos) > 1 else 0
+    
+    normStdX = (stdX / np.mean(xPos)) if len(xPos) > 1 else 0
+    normStdY = (stdY / np.mean(yPos)) if len(yPos) > 1 else 0
+
+
+    if normStdX > normStdY:
+        return "columns"
+    else:
+        return "rows"
+
+def to_dict(node: DesignNode, images: dict[str, str]):
+    return {
+        "tag": "UNK",
+        "name": node.name,
+        "node" : {
+            "type": node.figma_type,
+            "x": node.left(),
+            "y": node.top(),
+            "width": node.calculatedWidth(),
+            "height": node.calculatedHeight(),
+            "fills": [
+                {
+                    "blendMode": "NORMAL",  
+                    "type": "IMAGE" if node.name.startswith("IMAGE") else "SOLID",
+                    "color": {
+                        "r": node.bgColor[0] if not node.isText() else node.textColor[0],
+                        "g": node.bgColor[1] if not node.isText() else node.textColor[1],
+                        "b": node.bgColor[2] if not node.isText() else node.textColor[2],
+                        "a": node.bgColor[3] if not node.isText() else node.textColor[3]
+                    } if not node.name.startswith("IMAGE") else None,
+                    "imageRef": images[node.imageUrl] if node.name.startswith("IMAGE") else None,
+                }
+            ],
+            "strokes": [
+                {
+                    "blendMode": "NORMAL",
+                    "type": "SOLID",
+                    "color": {
+                        "r": node.borderColor[0],
+                        "g": node.borderColor[1],
+                        "b": node.borderColor[2],
+                        "a": node.borderColor[3]
+                    },
+                    "weight": node.borderWeight
+
+                }
+            ],#
+            "topLeftRadius": node.borderRadius,
+            "topRightRadius": node.borderRadius,
+            "bottomLeftRadius": node.borderRadius,
+            "bottomRightRadius": node.borderRadius,
+            "StrokeWeight": node.borderWeight, 
+            "flexDirection": "row" if getNodeDirection(node) == "columns" else "column",
+            "characters": node.text if node.isText() else "",
+            "fontSize": 15.0,
+            "fontName": {
+                "family": "Permanent Marker",
+                "style": "Regular"
+            },
+        },
+        "children": [to_dict(child, images) for child in node.children]
+        # "children": ", ".join([child.id for child in self.children])
+    }

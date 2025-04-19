@@ -2,6 +2,7 @@ import requests
 from urllib.parse import urlparse, parse_qs
 
 FIGMA_API_KEY = "figd_o72r2VUukQuXx7Rm4DRHaBrhsyGTx6ZK1MHzFsUE"
+# FIGMA_API_KEY = "figd_-CiP76gK6arWgth5YdsJGK_eZNOuMIakUBmKVvnP"
 
 def requestFigmaFileImage(figmaFileKey: str, nodeId: str | None, format: str = "jpg"):
     url = "https://api.figma.com/v1/images/:file_key?ids=:ids&format=:format".replace(":file_key", figmaFileKey).replace(":ids", nodeId.replace(":", "-")).replace(":format", format)

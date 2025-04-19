@@ -42,6 +42,7 @@ def debug_tree(root: DesignNode):
     for pre, _, node in RenderTree(root):
         print(f"{pre}{node.name[:20]}")
 
+
 def parseFigmaJsonFile(jsonFile: dict):
     extractedNodes = []
     
@@ -112,6 +113,20 @@ def parseJsonNodes(jsonNodes: list[dict]):
                 node.imageUrl = jsonNode["fills"][0]["imageRef"]
                 node.imgScaleMode = jsonNode["fills"][0]["scaleMode"]
                 node.name = "IMAGE " + str(node.id)
+
+        if "backgrounds" in jsonNode.keys() and len(jsonNode["backgrounds"]) > 0:
+            if "color" in jsonNode["backgrounds"][0]:
+                colorJson = jsonNode["backgrounds"][0]["color"]
+                color = (float(colorJson["r"]), float(colorJson["g"]), float(colorJson["b"]), float(colorJson["a"])) 
+
+                if node.figma_type == "TEXT":
+                    node.textColor = color
+                else:
+                    node.bgColor = color
+            if "imageRef" in jsonNode["backgrounds"][0]:
+                node.imageUrl = jsonNode["backgrounds"][0]["imageRef"]
+                node.imgScaleMode = jsonNode["backgrounds"][0]["scaleMode"]
+                node.name = "IMAGE " + str(node.id)
         
         if "strokes" in jsonNode.keys() and len(jsonNode["strokes"]) > 0:
             if "color" in jsonNode["strokes"][0]:
@@ -120,7 +135,7 @@ def parseJsonNodes(jsonNodes: list[dict]):
                 node.borderColor = color
              
         if "cornerRadius" in jsonNode.keys():
-            node.borderRadius = float(jsonNode["cornerRadius"])
+            node.borderRadius = [float(jsonNode["cornerRadius"]) for _ in range(4)]
 
         node.x = jsonNode["absoluteBoundingBox"]["x"]
         node.y = jsonNode["absoluteBoundingBox"]["y"]
@@ -129,6 +144,95 @@ def parseJsonNodes(jsonNodes: list[dict]):
         
         parsedNodes.append(node)
     return parsedNodes
+
+
+def parseTrainingJsonFile(jsonFile: dict):
+    extractedNodes = []
+    page_data = jsonFile
+    stack = [page_data]
+    
+    ids = 0
+    while len(stack) > 0:
+        top = stack[-1]
+        stack.pop()
+
+        top["id"] = ids; ids += 1
+
+        if "children" not in top.keys() or len(top["children"]) == 0:
+            continue
+        
+        for child in top["children"]:
+            stack.append(child)
+
+        extractedNodes.append(top)
+
+    return extractedNodes
+
+def parseTrainingJsonNodes(jsonNodes: list[dict]):
+    parsedNodes = []
+    for jsonNode in jsonNodes:
+        nodeDetails = jsonNode["node"]
+        # if jsonNode["type"] in ["FRAME"]: continue
+        node = DesignNode(jsonNode["id"])
+        node.name = f"Node {jsonNode["id"]}"
+        node.tag = jsonNode["tag"]
+        node.figma_type = nodeDetails["type"]
+        node.rotation = 0
+        
+        if node.figma_type == "TEXT":
+            node.text = nodeDetails["characters"]
+
+        if "fills" in nodeDetails.keys() and len(nodeDetails["fills"]) > 0:
+            if "color" in nodeDetails["fills"][0]:
+                colorJson = nodeDetails["fills"][0]["color"]
+                color = (float(colorJson["r"]), float(colorJson["g"]), float(colorJson["b"]), float(nodeDetails["fills"][0]["opacity"])) 
+
+                if node.figma_type == "TEXT":
+                    node.textColor = color
+                else:
+                    node.bgColor = color
+            if "url" in nodeDetails["fills"][0]:
+                node.imageUrl = nodeDetails["fills"][0]["url"]
+                node.imgScaleMode = nodeDetails["fills"][0]["scaleMode"]
+                node.name = "IMAGE " + str(node.id)
+
+        if "backgrounds" in nodeDetails.keys() and len(nodeDetails["backgrounds"]) > 0:
+            if "color" in nodeDetails["backgrounds"][0]:
+                colorJson = nodeDetails["backgrounds"][0]["color"]
+                color = (float(colorJson["r"]), float(colorJson["g"]), float(colorJson["b"]), float(nodeDetails["backgrounds"][0]["opacity"])) 
+
+                if node.figma_type == "TEXT":
+                    node.textColor = color
+                else:
+                    node.bgColor = color
+            if "url" in nodeDetails["backgrounds"][0]:
+                node.imageUrl = nodeDetails["backgrounds"][0]["url"]
+                node.imgScaleMode = nodeDetails["backgrounds"][0]["scaleMode"]
+                node.name = "IMAGE " + str(node.id)
+        
+        if "strokes" in nodeDetails.keys() and len(nodeDetails["strokes"]) > 0:
+            if "color" in nodeDetails["strokes"][0]:
+                colorJson = nodeDetails["strokes"][0]["color"]
+                color = (float(colorJson["r"]), float(colorJson["g"]), float(colorJson["b"]), float(nodeDetails["strokes"][0]["opacity"])) 
+                node.borderColor = color
+             
+        if "topLeftRadius" in nodeDetails.keys():
+            node.borderRadius[0] = nodeDetails["topLeftRadius"]
+        if "topRightRadius" in nodeDetails.keys():
+            node.borderRadius[1] = nodeDetails["topRightRadius"]
+        if "bottomRightRadius" in nodeDetails.keys(): 
+            node.borderRadius[2] = nodeDetails["bottomRightRadius"]
+        if "bottomLeftRadius" in nodeDetails.keys():
+            node.borderRadius[3] = nodeDetails["bottomLeftRadius"]
+
+        node.x = nodeDetails["x"]
+        node.y = nodeDetails["y"]
+        node.width = nodeDetails["width"]
+        node.height = nodeDetails["height"]
+        
+        parsedNodes.append(node)
+    return parsedNodes
+
 
 def normalizeTexts(root: DesignNode):
     lettersRegex = r"\b[^a-zA-Z\s]*[a-zA-Z]+[^a-zA-Z\s]*\b"
@@ -219,9 +323,8 @@ def getNodeDirection(root : Node):
     stdX : list[int] = np.std(xPos) if len(xPos) > 1 else 0 
     stdY : list[int] = np.std(yPos) if len(yPos) > 1 else 0
     
-    normStdX = (stdX / np.mean(xPos)) if len(xPos) > 1 else 0
-    normStdY = (stdY / np.mean(yPos)) if len(yPos) > 1 else 0
-
+    normStdX = (stdX / rootWidth) if rootWidth > 0 else 0
+    normStdY = (stdY / rootHeight) if rootHeight > 0 else 0
 
     if normStdX > normStdY:
         return "columns"

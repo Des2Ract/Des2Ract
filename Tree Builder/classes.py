@@ -42,6 +42,7 @@ class Node:
         self.id = id
         self.name = ""
         self.figma_type = "FRAME"
+        self.tag = "UNK"
 
         self.x = 0
         self.y = 0
@@ -61,9 +62,8 @@ class Node:
         self.textColor = (0, 0, 0, 0)
         self.bgColor = (0, 0, 0, 0)
         self.borderColor = (0, 0, 0, 0)
-        self.borderRadius = 0
+        self.borderRadius = [0, 0, 0, 0]
         self.borderWeight = 0
-
 
         self.layout = None
 
@@ -74,12 +74,14 @@ class Node:
     def calculatedWidth(self): return self.right() - self.left()
     def calculatedHeight(self): return self.bottom() - self.top()
     def area(self):     return (self.right() - self.left()) * (self.bottom() - self.top())
-    def center(self):   return np.mean( [(self.x + self.width / 2, self.y + self.height / 2)] + [child.center() for child in self.children], axis=0)
+    def center(self):   return np.mean( [(self.left() + self.calculatedWidth() / 2, self.top() + self.calculatedHeight() / 2)] + [child.center() for child in self.children], axis=0)
 
     def isText(self):    return self.figma_type in ["TEXT"]
     def isLine(self):    return self.figma_type in ["LINE"]
     def isLeaf(self):    return self.figma_type in ["TEXT", "LINE", "VECTOR"]
     def isGroupingNode(self): return self.name.startswith("GROUP") or self.name.startswith("ROW") or self.name.startswith("COLUMN")
+    def isFigmaGroup(self): return self.figma_type in ["GROUP", "FRAME"]
+    def isLayoutNode(self): return self.name.startswith("ROW") or self.name.startswith("COLUMN")
     def isIconPart(self):   return self.figma_type in ["VECTOR"]
     def isImage(self):  return False # modify this later
 
@@ -159,12 +161,21 @@ class Node:
         elif node.isInside(self):
             return -1 * node.area()
         
+        angle = calculate_angle(self.center(), node.center())
+
+
         distances = [
             abs(node.left() - self.right()), 
             abs(node.right() - self.left()),
             abs(node.top() - self.bottom()),
             abs(node.bottom() - self.top())
         ]
+
+        if 80 <= angle <= 100 or 260 <= angle <= 280:
+            return min(distances[2: 3])
+        
+        elif -10 <= angle <= 10 or 170 <= angle <= 190:
+            return min(distances[0: 1])
 
         return np.min(distances)
 

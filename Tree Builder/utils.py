@@ -42,7 +42,6 @@ def debug_tree(root: DesignNode):
     for pre, _, node in RenderTree(root):
         print(f"{pre}{node.name[:20]}")
 
-
 def parseFigmaJsonFile(jsonFile: dict):
     extractedNodes = []
     
@@ -309,8 +308,8 @@ def getNodesBetween(root: DesignNode, left: float, right: float, top: float, bot
 
 def getNodeDirection(root : Node):
     # this should make something that tells me that this node should be row based or column based
-    rootWidth = root.calculatedWidth()
-    rootHeight = root.calculatedHeight()
+    rootWidth = max(root.calculatedWidth(), 1e-9)
+    rootHeight = max(root.calculatedHeight(), 1e-9)
     for child in root.children:
         if child.calculatedWidth() / rootWidth > 0.9:
             return "rows"
@@ -333,7 +332,7 @@ def getNodeDirection(root : Node):
 
 def to_dict(node: DesignNode, images: dict[str, str]):
     return {
-        "tag": "UNK",
+        "tag": node.tag,
         "name": node.name,
         "node" : {
             "type": node.figma_type,
@@ -368,10 +367,10 @@ def to_dict(node: DesignNode, images: dict[str, str]):
 
                 }
             ],#
-            "topLeftRadius": node.borderRadius,
-            "topRightRadius": node.borderRadius,
-            "bottomLeftRadius": node.borderRadius,
-            "bottomRightRadius": node.borderRadius,
+            "topLeftRadius": node.borderRadius[0],
+            "topRightRadius": node.borderRadius[1],
+            "bottomLeftRadius": node.borderRadius[3],
+            "bottomRightRadius": node.borderRadius[2],
             "StrokeWeight": node.borderWeight, 
             "flexDirection": "row" if getNodeDirection(node) == "columns" else "column",
             "characters": node.text if node.isText() else "",

@@ -119,6 +119,7 @@ def makeLayout(root: Node):
                         container.width = -10000
                         container.height = -10000
                         container.name = ("ROW " if dir == "rows" else "COLUMN ") + str(container.id)
+                        container.figma_type = "GROUP"
                         container.appendChildren(nodes)
                         for node in nodes:
                             subroot.children.remove(node)
@@ -141,6 +142,7 @@ def createContainer():
     container.width = -10000
     container.height = -10000
     container.name = "GROUP " + str(container.id)
+    container.figma_type = "FRAME"
 
     return container
 

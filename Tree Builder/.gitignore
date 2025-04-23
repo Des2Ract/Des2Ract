@@ -1,4 +1,5 @@
 dataset/*
 debug/*
-output\*
+output/*
+debug/*
 __pycache__

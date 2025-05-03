@@ -156,6 +156,7 @@ def parseTrainingJsonFile(jsonFile: dict):
         stack.pop()
 
         top["id"] = ids; ids += 1
+        extractedNodes.append(top)
 
         if "children" not in top.keys() or len(top["children"]) == 0:
             continue
@@ -163,7 +164,6 @@ def parseTrainingJsonFile(jsonFile: dict):
         for child in top["children"]:
             stack.append(child)
 
-        extractedNodes.append(top)
 
     return extractedNodes
 
@@ -172,12 +172,16 @@ def parseTrainingJsonNodes(jsonNodes: list[dict]):
     for jsonNode in jsonNodes:
         nodeDetails = jsonNode["node"]
         # if jsonNode["type"] in ["FRAME"]: continue
+
+        if nodeDetails["type"] not in ["RECTANGLE", "GROUP", "LINK_UNFURL", "FRAME"]: 
+            "continue"
+
         node = DesignNode(jsonNode["id"])
         node.name = f"Node {jsonNode["id"]}"
         node.tag = jsonNode["tag"]
         node.figma_type = nodeDetails["type"]
         node.rotation = 0
-        
+    
         if node.figma_type == "TEXT":
             node.text = nodeDetails["characters"]
 
@@ -226,8 +230,16 @@ def parseTrainingJsonNodes(jsonNodes: list[dict]):
 
         node.x = nodeDetails["x"]
         node.y = nodeDetails["y"]
-        node.width = nodeDetails["width"]
-        node.height = nodeDetails["height"]
+        
+        if "width" not in nodeDetails:
+            node.width = 1
+        else:
+            node.width = nodeDetails["width"]
+
+        if "height" not in nodeDetails:
+            node.height = 1
+        else:
+            node.height = nodeDetails["height"]
         
         parsedNodes.append(node)
     return parsedNodes
@@ -350,7 +362,7 @@ def to_dict(node: DesignNode, images: dict[str, str]):
                         "b": node.bgColor[2] if not node.isText() else node.textColor[2],
                         "a": node.bgColor[3] if not node.isText() else node.textColor[3]
                     } if not node.name.startswith("IMAGE") else None,
-                    "imageRef": images[node.imageUrl] if node.name.startswith("IMAGE") else None,
+                    "imageRef": images[node.imageUrl] if node.name.startswith("IMAGE") and node.imageUrl in images else node.imageUrl,
                 }
             ],
             "strokes": [

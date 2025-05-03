@@ -215,6 +215,7 @@ def getAbstractTree(root: Node):
         return abstractedChildren
     else:
         return [root]
+
         
 
 # ======================================================
